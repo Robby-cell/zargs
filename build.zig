@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const argify_mod = b.addModule("argify", .{
+    const argify_mod = b.addModule("zargs", .{
         .optimize = optimize,
         .target = target,
         .root_source_file = .{ .path = "argify.zig" },
@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .name = "example",
     });
-    exe.root_module.addImport("argify", argify_mod);
+    exe.root_module.addImport("zargs", argify_mod);
 
     b.installArtifact(exe);
 

@@ -1,5 +1,5 @@
 const std = @import("std");
-const argify = @import("argify");
+const argify = @import("zargs");
 
 pub fn main() !void {
     const Options = struct {
