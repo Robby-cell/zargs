@@ -75,6 +75,33 @@ pub fn parseArgs(comptime T: type, arg_iterator: anytype, allocator: std.mem.All
     return result;
 }
 
+test "args" {
+    const Options = struct {
+        run: bool = false,
+        dummy_bool: bool = false,
+        name: ?[]const u8 = null,
+        count: i32 = 0,
+        float: f32 = 0.0,
+    };
+    var iterator = std.mem.splitScalar(u8, "exe_name|--run|--name=name stuff|--count=123|--float=12.34", '|');
+    const exe_name = iterator.next().?;
+
+    var result = try parseArgs(Options, &iterator, std.testing.allocator);
+    defer result.deinit();
+
+    result.exe_name = @ptrCast(exe_name);
+    const opts = result.options;
+
+    const expect = std.testing.expect;
+
+    const name: [:0]const u8 = "name stuff";
+    try expect(opts.run);
+    try expect(!opts.dummy_bool);
+    try expect(std.mem.eql(u8, opts.name.?, name));
+    try expect(opts.count == @as(i32, 123));
+    try expect(opts.float == (@as(f32, 12.34)));
+}
+
 fn parseOption(
     comptime T: type,
     allocator: std.mem.Allocator,
@@ -148,6 +175,107 @@ fn convertArgValue(comptime T: type, allocator: std.mem.Allocator, input: []cons
         },
         else => @compileError(@typeName(T) ++ " is not a supported type."),
     };
+}
+
+test "convert tests" {
+    const cases = .{
+        "words",
+
+        "true",
+        "false",
+
+        "123",
+        "-127",
+        "12.34",
+        "-22.77",
+
+        "variant",
+        "parsedFromFunc",
+
+        "a ptr parse",
+    };
+
+    const Enum1 = enum { variant, other };
+
+    const Enum2 = enum {
+        variant,
+        other,
+
+        fn parse(input: []const u8) @This() {
+            return if (std.mem.eql(u8, input, "parsedFromFunc"))
+                return .other
+            else
+                @panic("invalid enum");
+        }
+    };
+
+    const Type: type = struct {
+        ?[]const u8,
+
+        bool,
+        bool,
+
+        u32,
+        i32,
+        f32,
+        f64,
+
+        Enum1,
+        Enum2,
+
+        []const u8,
+    };
+
+    const results: Type = .{
+        "words",
+
+        true,
+        false,
+
+        123,
+        -127,
+        12.34,
+        -22.77,
+
+        Enum1.variant,
+        Enum2.other,
+
+        "a ptr parse",
+    };
+
+    var answers: Type = undefined;
+    inline for (@typeInfo(Type).Struct.fields) |field| {
+        @field(answers, field.name) = try convertArgValue(field.type, std.testing.allocator, @field(cases, field.name));
+    }
+
+    const deeplyEqual = struct {
+        fn callback(lhs: anytype, rhs: @TypeOf(lhs)) bool {
+            return switch (@typeInfo(@TypeOf(lhs))) {
+                .Struct, .Union => std.meta.eql(lhs, rhs),
+
+                // we wont accept any pointer in parsing that isnt u8
+                .Pointer => std.mem.eql(u8, lhs, rhs),
+
+                .Int => lhs == rhs,
+                .Float => lhs == rhs,
+                .Bool => lhs == rhs,
+                .Enum => rhs == rhs,
+
+                .Optional => blk: {
+                    if (lhs == null and rhs == null) break :blk true;
+                    if (lhs == null or rhs == null) break :blk false;
+
+                    break :blk callback(lhs.?, rhs.?);
+                },
+
+                else => |T| @compileError(@typeName(@Type(T)) ++ " can't be compared."),
+            };
+        }
+    }.callback;
+
+    inline for (@typeInfo(@TypeOf(results)).Struct.fields) |field| {
+        try std.testing.expect(deeplyEqual(@field(results, field.name), @field(answers, field.name)));
+    }
 }
 
 fn parseBool(input: []const u8) !bool {
