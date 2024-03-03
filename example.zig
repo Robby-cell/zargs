@@ -5,6 +5,11 @@ pub fn main() !void {
     const Options = struct {
         foo: bool = false,
         bar: ?[]const u8 = null,
+
+        pub const shorthands = .{
+            .f = "foo",
+            .b = "bar",
+        };
     };
 
     var opts = try argify.currentProcParse(Options, std.heap.page_allocator);

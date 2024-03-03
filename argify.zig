@@ -47,12 +47,13 @@ pub fn parseArgs(comptime T: type, arg_iterator: anytype, allocator: std.mem.All
 
     var err: ?anyerror = null;
 
+    const Pair = struct {
+        name: []const u8,
+        value: ?[]const u8,
+    };
+
     while (arg_iterator.next()) |arg| {
         if (std.mem.startsWith(u8, arg, "--")) {
-            const Pair = struct {
-                name: []const u8,
-                value: ?[]const u8,
-            };
             const pair: Pair = if (std.mem.indexOf(u8, arg, "=")) |idx|
                 .{ .name = arg[2..idx], .value = arg[idx + 1 ..] }
             else
@@ -70,6 +71,23 @@ pub fn parseArgs(comptime T: type, arg_iterator: anytype, allocator: std.mem.All
             if (!found) {
                 err = error.EncounteredUnknownArgument;
             }
+        } else if (@hasDecl(T, "shorthands") and std.mem.startsWith(u8, arg, "-")) {
+            const pair: Pair = if (std.mem.indexOf(u8, arg, "=")) |idx|
+                .{ .name = arg[1..idx], .value = arg[idx + 1 ..] }
+            else
+                .{ .name = arg[1..], .value = null };
+
+            var found = false;
+            inline for (std.meta.fields(@TypeOf(T.shorthands))) |field| {
+                if (std.mem.eql(u8, pair.name, field.name)) {
+                    const true_name = @field(T.shorthands, field.name);
+                    try parseOption(T, result_allocator, &result.options, arg_iterator, &err, true_name, pair.value);
+                    found = true;
+                    break;
+                }
+            }
+        } else {
+            return error.InvalidArg;
         }
     }
     return result;
